@@ -1,0 +1,6 @@
+{
+  "name": "ClickMax",
+  "description": "A cinematic video discovery and streaming platform with AI-powered insights.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
