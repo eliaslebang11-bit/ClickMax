@@ -1,0 +1,50 @@
+// =============================================================================
+// OPTION A: Groovy DSL Setup (Standard app/build.gradle)
+// Copy the block below and paste it inside the "dependencies { ... }" block of your app/build.gradle
+// =============================================================================
+
+/*
+dependencies {
+    // 1. Android Jetpack Media3 Transformer for Hardware-Accelerated Video Compression
+    implementation "androidx.media3:media3-transformer:1.2.0"
+    implementation "androidx.media3:media3-effect:1.2.0" // Required for effects
+    implementation "androidx.media3:media3-common:1.2.0"
+
+    // 2. High Performance networking client (OkHttp)
+    implementation "com.squareup.okhttp3:okhttp:4.12.0"
+
+    // 3. Kotlin Coroutines (for background processing & async threading)
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3"
+    
+    // 4. Lifecycle Extensions for Jetpack Compose & MVVM integration
+    implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0"
+    implementation "androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0"
+}
+*/
+
+
+// =============================================================================
+// OPTION B: Kotlin DSL Setup (Modern app/build.gradle.kts)
+// Copy the block below and paste it inside the "dependencies { ... }" block of your app/build.gradle.kts
+// =============================================================================
+
+/*
+dependencies {
+    // 1. Android Jetpack Media3 Transformer for Hardware-Accelerated Video Compression
+    implementation("androidx.media3:media3-transformer:1.2.0")
+    implementation("androidx.media3:media3-effect:1.2.0")
+    implementation("androidx.media3:media3-common:1.2.0")
+
+    // 2. High Performance networking client (OkHttp)
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // 3. Kotlin Coroutines (for background processing & async threading)
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+    
+    // 4. Lifecycle Extensions for Jetpack Compose & MVVM integration
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
+}
+*/

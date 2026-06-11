@@ -1,0 +1,11 @@
+// Add this dependency inside your app-level build.gradle or build.gradle.kts file
+
+dependencies {
+    // 1. Google Play Services Ads SDK to load and display AdMob Rewarded Interstitial formats
+    implementation 'com.google.android.gms:play-services-ads:23.0.0'
+    
+    // 2. AppCompat & UI dependencies for native elements (if not already existing)
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.11.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+}

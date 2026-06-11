@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: clickmax-api
+    env: node
+    buildCommand: NPM_CONFIG_PRODUCTION=false npm install && npm run build
+    startCommand: npm start
+    branch: main
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "20.11.0"
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: CLOUDFLARE_R2_ACCOUNT_ID
+        sync: false
+      - key: CLOUDFLARE_R2_BUCKET_NAME
+        sync: false
+      - key: CLOUDFLARE_ACCOUNT_ID
+        sync: false
+      - key: CLOUDFLARE_API_TOKEN
+        sync: false
+      - key: VITE_API_BASE_URL
+        value: "https://clickmax-api.onrender.com"
