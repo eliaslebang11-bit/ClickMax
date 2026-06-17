@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Link, useSearchParams, useNavigate } from "react-router-dom";
+import { Link, useSearchParams, useNavigate, useOutletContext } from "react-router-dom";
 import { useVideoStats } from "../context/VideoContext";
 import { ArrowLeft, Video as VideoIcon, Zap, User as UserIcon, Users, Flame, Check, Plus, Loader2, Search as SearchIcon, X } from "lucide-react";
 import { cn, formatCount } from "../lib/utils";
@@ -9,6 +9,7 @@ export default function Search() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const query = searchParams.get("q") || "";
+  const outletContext = useOutletContext<{ setSearchQuery?: (q: string) => void }>();
   
   const { homeVideos, shorts, profiles, toggleFollow, stats } = useVideoStats();
   const [activeTab, setActiveTab] = useState<"Videos" | "Shorts" | "Users">("Videos");
@@ -102,7 +103,13 @@ export default function Search() {
       {/* Interactive TikTok-style Search Header */}
       <div className="sticky top-0 z-30 bg-brand-bg/95 backdrop-blur-md border-b border-brand-border px-3 py-3 flex items-center gap-2">
         <button
-          onClick={() => navigate("/")}
+          onClick={() => {
+            setLocalQuery("");
+            if (outletContext?.setSearchQuery) {
+              outletContext.setSearchQuery("");
+            }
+            navigate("/");
+          }}
           className="p-1.5 hover:bg-brand-surface rounded-full transition-colors text-brand-text flex-shrink-0"
           title="Back to Home"
         >
@@ -141,6 +148,9 @@ export default function Search() {
             type="button"
             onClick={() => {
               setLocalQuery("");
+              if (outletContext?.setSearchQuery) {
+                outletContext.setSearchQuery("");
+              }
               navigate("/");
             }}
             className="text-xs font-black uppercase tracking-wider text-zinc-400 hover:text-red-400 font-sans active:scale-95 transition-all px-2.5 py-1.5 flex-shrink-0 border-l border-white/15 ml-1"
