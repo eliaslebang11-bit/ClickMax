@@ -86,8 +86,8 @@ const AdOverlay: React.FC<AdOverlayProps> = ({
   const [hasStarted, setHasStarted] = useState(false);
   const [hasPlaybackStarted, setHasPlaybackStarted] = useState(false);
   const [isImpressionLogged, setIsImpressionLogged] = useState(false);
-  const [isMediaPending, setIsMediaPending] = useState(true);
   const [isMediaLoaded, setIsMediaLoaded] = useState(false);
+  const isMediaPendingRef = useRef(true);
   
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -101,15 +101,15 @@ const AdOverlay: React.FC<AdOverlayProps> = ({
 
   const loadAds = async () => {
     console.log(`[ADS] 🟢 Fetching ads for placement: ${placement}...`);
-    setIsMediaPending(true);
+    isMediaPendingRef.current = true;
     
-    // Safety timeout: Lowered to 1.5 seconds to bypass slow/empty ad fetching gracefully and play the main video immediately
+    // Safety timeout: Increased to 5 seconds to bypass slow/empty ad fetching gracefully and play the main video immediately
     const timeoutId = setTimeout(() => {
-      if (isMediaPending) {
+      if (isMediaPendingRef.current) {
         console.warn(`[ADS] ⚠️ Ad fetch timed out for ${placement}, skipping to content.`);
         onAdEnd();
       }
-    }, 1500);
+    }, 5000);
 
     try {
       const ads = await adService.getActiveAds(placement);
@@ -127,7 +127,7 @@ const AdOverlay: React.FC<AdOverlayProps> = ({
       clearTimeout(timeoutId);
       onAdEnd();
     } finally {
-      setIsMediaPending(false);
+      isMediaPendingRef.current = false;
     }
   };
 

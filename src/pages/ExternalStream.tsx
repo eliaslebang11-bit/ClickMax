@@ -33,14 +33,11 @@ export default function ExternalStream() {
       setStreamKey(savedKey);
       setLoading(false);
     } else {
-      // Generate or fetch stream key
-      fetch(getApiUrl("/api/stream/key"), { method: "POST" })
-        .then(res => res.json())
-        .then(data => {
-          setStreamKey(data.key);
-          localStorage.setItem("stream_key_persistent", data.key);
-          setLoading(false);
-        });
+      // Generate or fetch stream key fallback
+      const fakeKey = "live_" + Math.random().toString(36).substr(2, 9);
+      setStreamKey(fakeKey);
+      localStorage.setItem("stream_key_persistent", fakeKey);
+      setLoading(false);
     }
   }, []);
 
@@ -49,11 +46,8 @@ export default function ExternalStream() {
     if (!streamKey) return;
 
     const interval = setInterval(() => {
-      fetch(getApiUrl(`/api/stream/status/${streamKey}`))
-        .then(res => res.json())
-        .then(data => {
-          setIsLive(data.isLive);
-        });
+      // Streaming from mobile isn't connected to an RTMP mock
+      setIsLive(false);
     }, 5000);
 
     return () => clearInterval(interval);

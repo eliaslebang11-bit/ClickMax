@@ -42,28 +42,12 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
   const fetchNotifications = useCallback(async () => {
-    if (!session?.access_token) {
+    if (!session?.user?.id) {
       setNotifications([]);
       return;
     }
-    try {
-      const response = await fetch(getApiUrl("/api/notifications"), {
-        headers: {
-          "Authorization": `Bearer ${session.access_token}`
-        }
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setNotifications(data.notifications || []);
-        return;
-      }
-    } catch (e) {
-      console.warn("[NOTIF-CTX] API notifications fetch failed (likely network/CORS), falling back to direct Supabase fetch:", e);
-    }
 
-    // Direct Supabase query as robust fallback
     try {
-      if (!session?.user?.id) return;
       const { data: notificationsData, error: dbError } = await supabase
         .from("notifications")
         .select("*")
@@ -168,43 +152,22 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   const markAsRead = useCallback(async (id: string) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
-    if (!session?.access_token) return;
-    try {
-      const response = await fetch(getApiUrl(`/api/notifications/${id}/read`), {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${session.access_token}`
-        }
-      });
-      if (response.ok) return;
-    } catch (e) {
-      console.warn("[NOTIF-CTX] Mark read API failed, trying direct Supabase fallback:", e);
-    }
+    if (!session?.user?.id) return;
 
     try {
       await supabase
         .from("notifications")
         .update({ is_read: true })
-        .eq("id", id);
+        .eq("id", id)
+        .eq("recipient_id", session.user.id);
     } catch (dbErr) {
       console.warn("[NOTIF-CTX] Direct Supabase update failed for markAsRead:", dbErr);
     }
-  }, [session?.access_token]);
+  }, [session?.user?.id]);
 
   const markAllAsRead = useCallback(async () => {
     setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-    if (!session?.access_token) return;
-    try {
-      const response = await fetch(getApiUrl("/api/notifications/read-all"), {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${session.access_token}`
-        }
-      });
-      if (response.ok) return;
-    } catch (e) {
-      console.warn("[NOTIF-CTX] Mark all read API failed, trying direct Supabase fallback:", e);
-    }
+    if (!session?.user?.id) return;
 
     try {
       if (!session?.user?.id) return;
@@ -215,7 +178,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     } catch (dbErr) {
       console.warn("[NOTIF-CTX] Direct Supabase update failed for markAllAsRead:", dbErr);
     }
-  }, [session?.access_token, session?.user?.id]);
+  }, [session?.user?.id]);
 
   const addNotification = useCallback(async (newNotif: {
     recipient_id: string;

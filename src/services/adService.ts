@@ -1,7 +1,7 @@
 import { Ad, AdAnalytics, AdPlacement, AdType, ShortsAd } from '../types';
 import { safeJsonStringify } from '../lib/utils';
 import { supabase } from '../lib/supabase';
-import { getApiUrl } from '../lib/api';
+// Removed
 
 export const adService = {
   /**
@@ -9,28 +9,23 @@ export const adService = {
    */
   async getActiveAds(placementType?: AdPlacement, type?: AdType): Promise<Ad[]> {
     try {
-      const queryString = placementType || type ? new URLSearchParams({
-        ...(placementType ? { placement_type: placementType } : {}),
-        ...(type ? { type } : {})
-      }).toString() : '';
+      let query = supabase.from('ads').select('*').eq('active', true);
       
-      const url = getApiUrl(`/api/ads/active${queryString ? `?${queryString}` : ''}`);
-
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-        }
-      });
-      
-      if (!response.ok) {
-        return [];
+      if (placementType) {
+        query = query.eq('placement_type', placementType);
+      }
+      if (type) {
+        query = query.eq('ad_type', type);
       }
       
-      const data = await response.json();
-      return Array.isArray(data) ? data : [];
+      const { data, error } = await query;
+      
+      if (error) {
+        console.error('Error fetching ads from Supabase:', error);
+        return [];
+      }
+      return data || [];
     } catch (error) {
-      // Return empty array on network failure
       return [];
     }
   },
@@ -40,16 +35,9 @@ export const adService = {
    */
   async getAllAds(): Promise<Ad[]> {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-
-      const response = await fetch(getApiUrl('/api/ads'), {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      if (!response.ok) throw new Error('Failed to list ads');
-      return await response.json();
+      const { data, error } = await supabase.from('ads').select('*').order('created_at', { ascending: false });
+      if (error) throw error;
+      return data || [];
     } catch (error) {
       return [];
     }
@@ -60,20 +48,9 @@ export const adService = {
    */
   async saveAd(ad: Partial<Ad>): Promise<Ad | null> {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-
-      const response = await fetch(getApiUrl('/api/ads'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: safeJsonStringify(ad)
-      });
-
-      if (!response.ok) throw new Error('Failed to save ad');
-      return await response.json();
+      const { data, error } = await supabase.from('ads').upsert([ad]).select().single();
+      if (error) throw error;
+      return data;
     } catch (error) {
       return null;
     }
@@ -84,16 +61,8 @@ export const adService = {
    */
   async deleteAd(id: string): Promise<boolean> {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-
-      const response = await fetch(getApiUrl(`/api/ads/${id}`), {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      return response.ok;
+      const { error } = await supabase.from('ads').delete().eq('id', id);
+      return !error;
     } catch (error) {
       return false;
     }
@@ -104,21 +73,18 @@ export const adService = {
    */
   async logEvent(adId: string, eventType: AdAnalytics['event_type']): Promise<void> {
     try {
-      // Basic targeting info
       const country = (navigator as any).language?.split('-')[1] || 'Unknown';
       const device = /Mobi|Android/i.test(navigator.userAgent) ? 'mobile' : 'desktop';
+      const { data: { session } } = await supabase.auth.getSession();
 
-      await fetch(getApiUrl(`/api/ads/${adId}/event`), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: safeJsonStringify({
-          event_type: eventType,
-          country,
-          device
-        })
-      });
+      await supabase.from('ad_analytics').insert([{
+        ad_id: adId,
+        event_type: eventType,
+        country,
+        device,
+        viewer_id: session?.user?.id || null,
+        created_at: new Date().toISOString()
+      }]);
     } catch (error) {
       // Silent on event logging failure
     }
@@ -129,16 +95,11 @@ export const adService = {
    */
   async getAnalyticsSummary(): Promise<any[]> {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-
-      const response = await fetch(getApiUrl('/api/ads/analytics/summary'), {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      if (!response.ok) throw new Error('Failed to fetch ad analytics');
-      return await response.json();
+      const { data, error } = await supabase.from('ad_analytics').select('*');
+      if (error) throw error;
+      // Primitive grouping since we don't have rpc here
+      // Ideally should be RPC or grouped query, but for simplicity returning raw format if no RPC
+      return data || [];
     } catch (error) {
       return [];
     }
@@ -149,18 +110,8 @@ export const adService = {
    */
   async saveSettings(key: string, value: any): Promise<boolean> {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-
-      const response = await fetch(getApiUrl('/api/ads/settings'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: safeJsonStringify({ key, value })
-      });
-      return response.ok;
+      const { error } = await supabase.from('ad_settings').upsert([{ key, value }], { onConflict: 'key' });
+      return !error;
     } catch (error) {
       return false;
     }
@@ -171,13 +122,12 @@ export const adService = {
    */
   async getSettings(): Promise<any> {
     try {
-      const response = await fetch(getApiUrl('/api/ads/settings'));
-      if (!response.ok) {
+      const { data, error } = await supabase.from('ad_settings').select('value').eq('key', 'playback_config').single();
+      if (error || !data) {
         return { playback_config: { midroll_interval: 10 } };
       }
-      return await response.json();
+      return data.value;
     } catch (error) {
-      // Intentionally silent - fallback to default config
       return { playback_config: { midroll_interval: 10 } };
     }
   },
@@ -187,10 +137,13 @@ export const adService = {
    */
   async getActiveShortsAds(): Promise<ShortsAd[]> {
     try {
-      const response = await fetch(getApiUrl('/api/shorts/ads/active'));
-      if (!response.ok) return [];
-      const data = await response.json();
-      return Array.isArray(data) ? data : [];
+      let { data, error } = await supabase.from('shorts_ads').select('*').eq('active', true);
+      if (error || !data || data.length === 0) {
+        // Fallback to general ads
+        const fallback = await supabase.from('ads').select('*').eq('active', true).eq('placement_type', 'shorts-feed');
+        data = fallback.data;
+      }
+      return data || [];
     } catch (error) {
       return [];
     }
@@ -201,16 +154,9 @@ export const adService = {
    */
   async getAllShortsAds(): Promise<ShortsAd[]> {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-
-      const response = await fetch(getApiUrl('/api/shorts/ads'), {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      if (!response.ok) throw new Error('Failed to list shorts ads');
-      return await response.json();
+      const { data, error } = await supabase.from('shorts_ads').select('*').order('created_at', { ascending: false });
+      if (error) throw error;
+      return data || [];
     } catch (error) {
       return [];
     }
@@ -221,20 +167,9 @@ export const adService = {
    */
   async saveShortsAd(ad: Partial<ShortsAd>): Promise<ShortsAd | null> {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-
-      const response = await fetch(getApiUrl('/api/shorts/ads'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: safeJsonStringify(ad)
-      });
-
-      if (!response.ok) throw new Error('Failed to save shorts ad');
-      return await response.json();
+      const { data, error } = await supabase.from('shorts_ads').upsert([ad]).select().single();
+      if (error) throw error;
+      return data;
     } catch (error) {
       return null;
     }
@@ -245,16 +180,8 @@ export const adService = {
    */
   async deleteShortsAd(id: string): Promise<boolean> {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-
-      const response = await fetch(getApiUrl(`/api/shorts/ads/${id}`), {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      return response.ok;
+      const { error } = await supabase.from('shorts_ads').delete().eq('id', id);
+      return !error;
     } catch (error) {
       return false;
     }
@@ -267,18 +194,16 @@ export const adService = {
     try {
       const country = (navigator as any).language?.split('-')[1] || 'Unknown';
       const device = /Mobi|Android/i.test(navigator.userAgent) ? 'mobile' : 'desktop';
+      const { data: { session } } = await supabase.auth.getSession();
 
-      await fetch(getApiUrl(`/api/shorts/ads/${adId}/event`), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: safeJsonStringify({
-          event_type: eventType,
-          country,
-          device
-        })
-      });
+      await supabase.from('shorts_ad_analytics').insert([{
+        ad_id: adId,
+        event_type: eventType,
+        country,
+        device,
+        viewer_id: session?.user?.id || null,
+        created_at: new Date().toISOString()
+      }]);
     } catch (error) {}
   },
 
@@ -287,13 +212,13 @@ export const adService = {
    */
   async logShortsView(adId: string, data: { watch_time_seconds: number, completed: boolean, skipped: boolean }): Promise<void> {
     try {
-      await fetch(getApiUrl(`/api/shorts/ads/${adId}/view`), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: safeJsonStringify(data)
-      });
+      const { data: { session } } = await supabase.auth.getSession();
+      await supabase.from('shorts_ad_views').insert([{
+        ad_id: adId,
+        ...data,
+        viewer_id: session?.user?.id || null,
+        created_at: new Date().toISOString()
+      }]);
     } catch (error) {}
   }
 };

@@ -531,25 +531,26 @@ function getFallbackComments(videoId?: string, shortId?: string) {
         id: `fallback-user-id-${userIndex}`,
         username: user.username,
         avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}`
-      },
-      replies: i % 3 === 0 ? [
-        {
-          id: `${commentId}-reply`,
-          video_id: videoId || null,
-          short_id: shortId || null,
-          user_id: `fallback-user-id-reply`,
-          parent_id: commentId,
-          content: "Totally agree with this! 💯",
-          likes_count: Math.floor(likes / 4),
-          created_at: new Date(date.getTime() + 15 * 60000).toISOString(),
-          user: {
-            id: `fallback-user-id-reply`,
-            username: "Reply_Guru",
-            avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=Reply_Guru`
-          }
-        }
-      ] : []
+      }
     });
+
+    if (i % 3 === 0) {
+      list.push({
+        id: `${commentId}-reply`,
+        video_id: videoId || null,
+        short_id: shortId || null,
+        user_id: `fallback-user-id-reply`,
+        parent_id: commentId,
+        content: "Totally agree with this! 💯",
+        likes_count: Math.floor(likes / 4),
+        created_at: new Date(date.getTime() + 15 * 60000).toISOString(),
+        user: {
+          id: `fallback-user-id-reply`,
+          username: "Reply_Guru",
+          avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=Reply_Guru`
+        }
+      });
+    }
   }
   return list;
 }

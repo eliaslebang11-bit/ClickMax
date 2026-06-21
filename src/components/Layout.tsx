@@ -80,6 +80,13 @@ export default function Layout() {
   const isFullScreen = useVideoStats().isFullScreen || location.pathname === "/live-talk";
   const isAddContentPage = location.pathname === "/add-content";
 
+  React.useEffect(() => {
+    if (location.pathname === "/") {
+      setSearchQuery("");
+      setShortsSearchQuery("");
+    }
+  }, [location.pathname]);
+
   const navItems = [
     { icon: Home, label: "Home", to: "/" },
     { icon: Zap, label: "Shorts", to: "/shorts" },

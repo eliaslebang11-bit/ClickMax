@@ -15,32 +15,6 @@ export default function Search() {
   const [activeTab, setActiveTab] = useState<"Videos" | "Shorts" | "Users">("Videos");
   const [localQuery, setLocalQuery] = useState(query);
 
-  const [pinnedLocal, setPinnedLocal] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem("streamcore_pinned_profiles");
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const togglePinUserProfile = async (username: string) => {
-    try {
-      const isPinned = pinnedLocal.includes(username);
-      const nextPinned = isPinned
-        ? pinnedLocal.filter(u => u !== username)
-        : [...pinnedLocal, username];
-
-      setPinnedLocal(nextPinned);
-      localStorage.setItem("streamcore_pinned_profiles", JSON.stringify(nextPinned));
-
-      // Try updating in Supabase
-      await useVideoStats().togglePinProfile?.(username, !isPinned);
-    } catch (err) {
-      console.warn("Could not save pin to DB:", err);
-    }
-  };
-
   useEffect(() => {
     setLocalQuery(query);
   }, [query]);
@@ -78,8 +52,8 @@ export default function Search() {
       );
     })
     .sort((a, b) => {
-      const aPinned = a.is_pinned || pinnedLocal.includes(a.username);
-      const bPinned = b.is_pinned || pinnedLocal.includes(b.username);
+      const aPinned = a.is_pinned;
+      const bPinned = b.is_pinned;
       if (aPinned && !bPinned) return -1;
       if (!aPinned && bPinned) return 1;
 

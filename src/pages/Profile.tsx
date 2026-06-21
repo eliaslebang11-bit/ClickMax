@@ -21,30 +21,13 @@ export default function Profile() {
   // Consolidate
   const profile = dynamicProfile || (username ? Object.values(profiles).find(p => p.username?.toLowerCase() === username.toLowerCase()) : null);
 
-  const [pinnedLocal, setPinnedLocal] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem("streamcore_pinned_profiles");
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const isPinnedOnPage = profile?.is_pinned || (profile && pinnedLocal.includes(profile.username));
+  const isPinnedOnPage = profile?.is_pinned;
 
   const togglePinProfileOnPage = async (usernameStr: string) => {
     try {
-      const isPinned = pinnedLocal.includes(usernameStr);
-      const nextPinned = isPinned
-        ? pinnedLocal.filter(u => u !== usernameStr)
-        : [...pinnedLocal, usernameStr];
-
-      setPinnedLocal(nextPinned);
-      localStorage.setItem("streamcore_pinned_profiles", JSON.stringify(nextPinned));
-
       const { togglePinProfile } = useVideoStats();
       if (togglePinProfile) {
-        await togglePinProfile(usernameStr, !isPinned);
+        await togglePinProfile(usernameStr, !isPinnedOnPage);
       }
     } catch (err) {
       console.warn("Could not save pin to DB:", err);
