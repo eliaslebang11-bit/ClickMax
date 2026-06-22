@@ -90,11 +90,8 @@ export default function Layout() {
   const navItems = [
     { icon: Home, label: "Home", to: "/" },
     { icon: Zap, label: "Shorts", to: "/shorts" },
-    { icon: Tv, label: "Stream Feed", to: "/stream-feed" },
     { icon: Radio, label: "Live", to: "/live" },
     { icon: Plus, label: "Create", to: "/add-content" },
-    { icon: BarChart3, label: "Dashboard", to: "/dashboard" },
-    { icon: Megaphone, label: "Ads", to: "/admin/ads" },
     { icon: Bell, label: "Activity", to: "/activity" },
   ];
 

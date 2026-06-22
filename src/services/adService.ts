@@ -1,7 +1,41 @@
 import { Ad, AdAnalytics, AdPlacement, AdType, ShortsAd } from '../types';
 import { safeJsonStringify } from '../lib/utils';
 import { supabase } from '../lib/supabase';
-// Removed
+
+// Helper mappers because DB schema differs from frontend expected structure
+const mapDbRecordToAd = (record: any): Ad => ({
+  ...record,
+  active: record.is_active || false,
+  placement_type: (record.placement?.toLowerCase() === 'shorts') ? 'shorts-feed' : record.placement?.toLowerCase(),
+  destination_url: record.target_url || '',
+  advertiser_name: record.title || 'Brand',
+  duration_seconds: 15,
+  skip_after_seconds: 5,
+  cta_text: 'Learn More'
+} as Ad);
+
+const mapAdToDbRecord = (ad: Partial<Ad>): any => {
+  const record: any = {
+    id: ad.id,
+    is_active: ad.active,
+    placement: ad.placement_type === 'shorts-feed' ? 'Shorts' :
+               ad.placement_type === 'pre-roll' ? 'Pre-roll' :
+               ad.placement_type === 'mid-roll' ? 'Mid-roll' :
+               ad.placement_type === 'post-roll' ? 'Post-roll' : ad.placement_type,
+    target_url: ad.destination_url,
+    title: ad.advertiser_name,
+    media_url: ad.media_url,
+    ad_type: ad.ad_type || 'video',
+    description: ad.description
+  };
+  
+  // if inserting new ad, omit id if it's new/generate one
+  if (!record.id) {
+    record.id = crypto.randomUUID();
+  }
+  
+  return record;
+};
 
 export const adService = {
   /**
@@ -9,10 +43,15 @@ export const adService = {
    */
   async getActiveAds(placementType?: AdPlacement, type?: AdType): Promise<Ad[]> {
     try {
-      let query = supabase.from('ads').select('*').eq('active', true);
+      let query = supabase.from('ads').select('*').eq('is_active', true);
       
       if (placementType) {
-        query = query.eq('placement_type', placementType);
+        // Map frontend placement to DB placement
+        const dbPlacement = placementType === 'pre-roll' ? 'Pre-roll' :
+                            placementType === 'mid-roll' ? 'Mid-roll' :
+                            placementType === 'post-roll' ? 'Post-roll' : 
+                            placementType === 'shorts-feed' ? 'Shorts' : placementType;
+        query = query.eq('placement', dbPlacement);
       }
       if (type) {
         query = query.eq('ad_type', type);
@@ -24,7 +63,8 @@ export const adService = {
         console.error('Error fetching ads from Supabase:', error);
         return [];
       }
-      return data || [];
+      
+      return (data || []).map(mapDbRecordToAd);
     } catch (error) {
       return [];
     }
@@ -37,7 +77,7 @@ export const adService = {
     try {
       const { data, error } = await supabase.from('ads').select('*').order('created_at', { ascending: false });
       if (error) throw error;
-      return data || [];
+      return (data || []).map(mapDbRecordToAd);
     } catch (error) {
       return [];
     }
@@ -48,10 +88,13 @@ export const adService = {
    */
   async saveAd(ad: Partial<Ad>): Promise<Ad | null> {
     try {
-      const { data, error } = await supabase.from('ads').upsert([ad]).select().single();
+      const dbAd = mapAdToDbRecord(ad);
+      
+      const { data, error } = await supabase.from('ads').upsert([dbAd]).select().single();
       if (error) throw error;
-      return data;
+      return data ? mapDbRecordToAd(data) : null;
     } catch (error) {
+      console.error("Save ad error:", error);
       return null;
     }
   },
@@ -137,13 +180,9 @@ export const adService = {
    */
   async getActiveShortsAds(): Promise<ShortsAd[]> {
     try {
-      let { data, error } = await supabase.from('shorts_ads').select('*').eq('active', true);
-      if (error || !data || data.length === 0) {
-        // Fallback to general ads
-        const fallback = await supabase.from('ads').select('*').eq('active', true).eq('placement_type', 'shorts-feed');
-        data = fallback.data;
-      }
-      return data || [];
+      const { data, error } = await supabase.from('ads').select('*').eq('is_active', true).eq('placement', 'Shorts');
+      if (error) throw error;
+      return (data || []).map(mapDbRecordToAd);
     } catch (error) {
       return [];
     }
@@ -154,9 +193,9 @@ export const adService = {
    */
   async getAllShortsAds(): Promise<ShortsAd[]> {
     try {
-      const { data, error } = await supabase.from('shorts_ads').select('*').order('created_at', { ascending: false });
+      const { data, error } = await supabase.from('ads').select('*').eq('placement', 'Shorts').order('created_at', { ascending: false });
       if (error) throw error;
-      return data || [];
+      return (data || []).map(mapDbRecordToAd);
     } catch (error) {
       return [];
     }
@@ -166,25 +205,15 @@ export const adService = {
    * Admin: Save (Create/Update) Shorts Ad
    */
   async saveShortsAd(ad: Partial<ShortsAd>): Promise<ShortsAd | null> {
-    try {
-      const { data, error } = await supabase.from('shorts_ads').upsert([ad]).select().single();
-      if (error) throw error;
-      return data;
-    } catch (error) {
-      return null;
-    }
+    const shortsAd = { ...ad, placement_type: 'shorts-feed' as AdPlacement };
+    return this.saveAd(shortsAd);
   },
 
   /**
    * Admin: Delete Shorts Ad
    */
   async deleteShortsAd(id: string): Promise<boolean> {
-    try {
-      const { error } = await supabase.from('shorts_ads').delete().eq('id', id);
-      return !error;
-    } catch (error) {
-      return false;
-    }
+    return this.deleteAd(id);
   },
 
   /**

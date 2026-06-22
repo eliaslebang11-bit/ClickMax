@@ -333,18 +333,8 @@ const ShortVideo = ({
 
   useEffect(() => {
     if (short.id) {
-      supabaseService.getComments(undefined, short.id).then(data => {
-        const calculateTotal = (list: any[]): number => {
-          let c = 0;
-          list.forEach(item => {
-            c += 1;
-            if (item.replies && item.replies.length > 0) {
-              c += calculateTotal(item.replies);
-            }
-          });
-          return c;
-        };
-        setExactCommentsCount(calculateTotal(data));
+      supabaseService.getCommentsCount(undefined, short.id).then(count => {
+        setExactCommentsCount(count);
       }).catch(err => {
         console.error("Error loading shorts comments count:", err);
       });

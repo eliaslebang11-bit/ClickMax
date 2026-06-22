@@ -147,7 +147,7 @@ function CommentItem({
       )}
     >
       <div className="flex gap-2.5">
-        <Link to={`/profile/${comment.user}`} className="flex-shrink-0 hover:opacity-80 transition-opacity">
+        <div className="flex-shrink-0 hover:opacity-80 transition-opacity cursor-default">
           <div className={cn(
             "rounded-full flex items-center justify-center font-bold text-white uppercase select-none",
             isReply ? "w-5 h-5 text-[10px]" : "w-9 h-9 text-sm",
@@ -155,17 +155,15 @@ function CommentItem({
           )}>
             {comment.user ? comment.user.trim().charAt(0).toUpperCase() : "?"}
           </div>
-        </Link>
+        </div>
         
         <div className="flex-1 min-w-0">
           <div className="flex justify-between items-start gap-2">
             <div className="space-y-0.5">
               <div className="flex items-center gap-1.5">
-                <Link to={`/profile/${comment.user}`} className="hover:underline">
-                  <span className="text-[12px] font-bold text-white/90">
-                    {comment.user}
-                  </span>
-                </Link>
+                <span className="text-[12px] font-bold text-white/90">
+                  {comment.user}
+                </span>
                 {isCreator && (
                   <span className="bg-red-500 text-[8px] font-black px-1 rounded-sm text-white uppercase tracking-tighter">
                     Creator
@@ -269,27 +267,57 @@ function CommentItem({
 export default function Comments({ videoId, shortId, onCommentsCountChange }: CommentsProps) {
   const [comments, setComments] = useState<VideoComment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [page, setPage] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newComment, setNewComment] = useState("");
   const [feedback, setFeedback] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const { session } = useUser();
   const navigate = useNavigate();
 
-  const loadComments = async () => {
-    setIsLoading(true);
-    const data = await supabaseService.getComments(videoId, shortId);
-    setComments(data);
-    setIsLoading(false);
+  const loadComments = async (reset: boolean = false) => {
+    if (reset) {
+      setIsLoading(true);
+      setPage(0);
+    } else {
+      setIsLoadingMore(true);
+    }
     
-    if (onCommentsCountChange) {
-      const total = countCommentsTree(data);
-      onCommentsCountChange(total);
+    const currentPage = reset ? 0 : page;
+    const { comments: newComments, hasMore: more } = await supabaseService.getComments(videoId, shortId, currentPage, 20);
+    
+    if (reset) {
+      setComments(newComments);
+    } else {
+      setComments(prev => [...prev, ...newComments]);
+    }
+    
+    setHasMore(more);
+    if (reset) {
+      setIsLoading(false);
+    } else {
+      setIsLoadingMore(false);
+    }
+    
+    // Total count is now updated from the parent fetching `getCommentsCount`
+  };
+
+  useEffect(() => {
+    loadComments(true);
+  }, [videoId, shortId]);
+
+  const handleLoadMore = () => {
+    if (!isLoadingMore && hasMore) {
+      setPage(prev => prev + 1);
     }
   };
 
   useEffect(() => {
-    loadComments();
-  }, [videoId, shortId]);
+    if (page > 0) {
+      loadComments(false);
+    }
+  }, [page]);
 
   useEffect(() => {
     if (feedback) {
@@ -304,15 +332,20 @@ export default function Comments({ videoId, shortId, onCommentsCountChange }: Co
       return false;
     }
 
-    const success = await supabaseService.postComment(text, videoId, shortId, parentId);
-    if (success === true) {
-      loadComments();
-      setFeedback({ message: "Reply posted!", type: 'success' });
-      return true;
-    } else {
-      const errorMsg = typeof success === 'string' ? success : "Failed to post reply";
-      setFeedback({ message: errorMsg, type: 'error' });
-      return false;
+    try {
+      setIsSubmitting(true);
+      const success = await supabaseService.postComment(text, videoId, shortId, parentId);
+      if (success === true) {
+        loadComments(true);
+        setFeedback({ message: "Reply posted!", type: 'success' });
+        return true;
+      } else {
+        const errorMsg = typeof success === 'string' ? success : "Failed to post reply";
+        setFeedback({ message: errorMsg, type: 'error' });
+        return false;
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -332,7 +365,7 @@ export default function Comments({ videoId, shortId, onCommentsCountChange }: Co
       if (success === true) {
         setNewComment("");
         setFeedback({ message: "Comment posted!", type: 'success' });
-        await loadComments();
+        await loadComments(true);
       } else {
         const errorMsg = typeof success === 'string' ? success : "Failed to post comment.";
         setFeedback({ message: errorMsg, type: 'error' });
@@ -360,11 +393,32 @@ export default function Comments({ videoId, shortId, onCommentsCountChange }: Co
             <Loader2 className="w-6 h-6 animate-spin text-white/20" />
           </div>
         ) : comments.length > 0 ? (
-          <AnimatePresence initial={false}>
-            {comments.map((comment) => (
-              <CommentItem key={comment.id} comment={comment} onReply={handleReply} />
-            ))}
-          </AnimatePresence>
+          <div className="space-y-1">
+            <AnimatePresence initial={false}>
+              {comments.map((comment) => (
+                <CommentItem key={comment.id} comment={comment} onReply={handleReply} />
+              ))}
+            </AnimatePresence>
+            {hasMore && (
+              <button
+                onClick={handleLoadMore}
+                disabled={isLoadingMore}
+                className="w-full py-3 my-2 text-sm font-bold text-white/50 hover:text-white/80 transition-colors flex items-center justify-center gap-2"
+              >
+                {isLoadingMore ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="w-4 h-4" />
+                    Load more comments
+                  </>
+                )}
+              </button>
+            )}
+          </div>
         ) : (
           <div className="flex flex-col items-center justify-center py-10 gap-3 opacity-30 text-center">
             <MessageSquare className="w-10 h-10" />

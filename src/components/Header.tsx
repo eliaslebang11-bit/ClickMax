@@ -39,17 +39,7 @@ export default function Header({ onMenuClick, searchQuery, onSearchChange, onSea
             </motion.button>
           )}
 
-          {user?.isAdmin && (
-            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-              <Link 
-                to="/admin/ads" 
-                className="p-2 w-10 h-10 bg-purple-500/10 border border-purple-500/20 rounded-xl flex items-center justify-center text-purple-400 hover:bg-purple-500/20 hover:text-purple-300 transition-all group"
-                title="Admin Ad Dashboard"
-              >
-                <ShieldCheck size={20} className="group-hover:animate-pulse" />
-              </Link>
-            </motion.div>
-          )}
+          {/* Removed Admin panel icon */}
 
           <motion.div className="relative group">
             <motion.button 

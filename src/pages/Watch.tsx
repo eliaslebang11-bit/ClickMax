@@ -64,19 +64,9 @@ export default function Watch() {
 
     if (id) {
       // Direct fetch of exact comments count from DB with race-safe filtering
-      supabaseService.getComments(id).then(data => {
+      supabaseService.getCommentsCount(id).then(count => {
         if (!active) return;
-        const calculateTotal = (list: any[]): number => {
-          let c = 0;
-          list.forEach(item => {
-            c += 1;
-            if (item.replies && item.replies.length > 0) {
-              c += calculateTotal(item.replies);
-            }
-          });
-          return c;
-        };
-        setExactCommentsCount(calculateTotal(data));
+        setExactCommentsCount(count);
       }).catch(err => {
         console.error("Error loading comments count:", err);
       });

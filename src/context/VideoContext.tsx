@@ -562,10 +562,12 @@ export const VideoProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const toggleFollow = (channelName: string) => {
-    // Get target profile ID
+    // Get target profile ID or fallback to channel name for backend lookup
     const targetProfile = profiles[channelName];
-    if (targetProfile?.id) {
-      supabaseService.toggleFollow(targetProfile.id);
+    const targetId = targetProfile?.id || channelName;
+    
+    if (targetId) {
+      supabaseService.toggleFollow(targetId);
     }
 
     // Capture precise follow flag at clicking instant to avoid race conditions

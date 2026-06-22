@@ -180,20 +180,46 @@ export class SupabaseInsertError extends Error {
 }
 
 export const supabaseService = {
-  async getComments(videoId?: string, shortId?: string): Promise<VideoComment[]> {
+  async getCommentsCount(videoId?: string, shortId?: string): Promise<number> {
+    try {
+      let query = supabase.from('comments').select('id', { count: 'exact', head: true });
+      if (videoId && videoId !== 'undefined') query = query.eq('video_id', videoId);
+      else if (shortId && shortId !== 'undefined') query = query.eq('short_id', shortId);
+
+      const { count, error } = await query;
+      if (error) {
+        console.error('Failed to count comments from Supabase:', error);
+        return 0;
+      }
+      return count || 0;
+    } catch (error) {
+      console.error('Error counting comments:', error);
+      return 0;
+    }
+  },
+
+  async getComments(videoId?: string, shortId?: string, page: number = 0, limit: number = 20): Promise<{ comments: VideoComment[], hasMore: boolean }> {
     try {
       let query = supabase.from('comments').select(`
         id, content, created_at, likes_count, parent_id,
         user:profiles!user_id(username, avatar_url)
       `);
+      
       if (videoId && videoId !== 'undefined') query = query.eq('video_id', videoId);
       else if (shortId && shortId !== 'undefined') query = query.eq('short_id', shortId);
 
-      const { data, error } = await query.order('created_at', { ascending: true });
+      const { data, error } = await query
+        .order('created_at', { ascending: false })
+        .range(page * limit, (page + 1) * limit - 1);
+
       if (error) {
         console.error('Failed to fetch comments from Supabase:', error);
-        return [];
+        return { comments: [], hasMore: false };
       }
+
+      // Instead of relying on a while loop, we just use the current page data
+      const allData = data || [];
+      const hasMoreData = allData.length === limit;
 
       // Helper to format timestamp
       const formatTime = (dateStr: string) => {
@@ -206,7 +232,7 @@ export const supabaseService = {
         return `${Math.floor(diff / 86400)}d ago`;
       };
 
-      const allComments = (data || []).map((c: any) => ({
+      const allComments = allData.map((c: any) => ({
         id: c.id,
         videoId: videoId || undefined,
         shortId: shortId || undefined,
@@ -231,40 +257,42 @@ export const supabaseService = {
         }
       });
 
-      return roots;
+      return { comments: roots, hasMore: hasMoreData };
     } catch (error) {
       console.error('Error fetching comments via Supabase JS:', error);
-      return [];
+      return { comments: [], hasMore: false };
     }
   },
 
   async postComment(content: string, videoId?: string, shortId?: string, parentId?: string): Promise<boolean | string> {
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) return "Authentication required";
+      if (!session?.user || !session?.access_token) return "Authentication required";
 
-      const { error } = await supabase.from('comments').insert([{
-        content,
-        video_id: videoId || null,
-        short_id: shortId || null,
-        parent_id: parentId || null,
-        user_id: session.user.id
-      }]);
+      const response = await fetch('/api/comments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          content,
+          video_id: videoId || null,
+          short_id: shortId || null,
+          parent_id: parentId || null,
+        })
+      });
 
-      if (error) {
-        return error.message || 'Failed to post comment';
-      }
-
-      // We should ideally run an RPC to increment the comment_count on videos or shorts.
-      // But Supabase triggers or a separate JS call could handle this.
-      try {
-        if (videoId) {
-           await supabase.rpc('increment_video_comments_count', { video_id: videoId });
-        } else if (shortId) {
-           await supabase.rpc('increment_short_comments_count', { short_id: shortId });
+      if (!response.ok) {
+        let msg = 'Failed to post comment';
+        try {
+          const errData = await response.json();
+          console.error("postComment API Error Response:", errData);
+          if (errData.error) msg = errData.error;
+        } catch (e) {
+          console.error("postComment API Failed, couldn't parse JSON:", response.status, response.statusText);
         }
-      } catch (e) {
-         // Silently ignore if RPC doesn't exist
+        return msg;
       }
 
       return true;
@@ -483,29 +511,35 @@ export const supabaseService = {
   async toggleFollow(targetId: string): Promise<boolean> {
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user?.id) return false;
-      const userId = session.user.id;
+      if (!session?.user?.id || !session?.access_token) return false;
 
-      // check user
-      const { data: targetProfile } = await supabase.from('profiles').select('id, username').eq('username', targetId).single();
-      const targetUserId = targetProfile?.id || targetId; // Handle both channel name or raw ID
-
-      const { data: existingMap } = await supabase
-        .from('followings')
-        .select('id')
-        .match({ follower_id: userId, channel_id: targetUserId })
-        .single();
-        
-      if (existingMap) {
-        await supabase.from('followings').delete().eq('id', existingMap.id);
-        await supabase.rpc('decrement_followers', { user_id: targetUserId });
-      } else {
-        await supabase.from('followings').insert({ follower_id: userId, channel_id: targetUserId });
-        await supabase.rpc('increment_followers', { user_id: targetUserId });
+      // Ensure we have the user UUID, not username
+      let targetUserId = targetId;
+      if (targetId && !targetId.includes('-')) {
+        const { data: targetProfile, error: tpErr } = await supabase.from('profiles').select('id').eq('username', targetId).single();
+        if (targetProfile?.id) {
+          targetUserId = targetProfile.id;
+        } else {
+          console.warn('Could not resolve username to ID:', targetId, tpErr);
+        }
       }
-      return true;
+
+      console.log('Toggling follow for target user ID:', targetUserId);
+      const response = await fetch(`/api/profiles/${targetUserId}/subscribe`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Subscribe API failed with status ${response.status}`);
+      }
+      
+      const result = await response.json();
+      return result.success;
     } catch (e) {
-      console.warn('Failed to toggle follow directly via Supabase:', e);
+      console.warn('Failed to toggle follow via proxy:', e);
       return false;
     }
   },
@@ -559,31 +593,45 @@ export const supabaseService = {
         avatar: String(short.avatar || '')
       };
 
-      // Removed fetch block
-        try {
-          const { data: directData, error: directErr } = await supabase
-            .from("shorts")
-            .insert([{
-              owner_id: userId,
-              video_url: sanitizedShort.videoUrl,
-              description: sanitizedShort.description,
-              creator: sanitizedShort.creator,
-              avatar: sanitizedShort.avatar,
-              created_at: new Date().toISOString()
-            }])
-            .select("*")
-            .maybeSingle();
+      try {
+        const response = await fetch('/api/shorts', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token && { 'Authorization': `Bearer ${token}` })
+          },
+          body: JSON.stringify(sanitizedShort)
+        });
 
-          if (!directErr && directData) {
-            console.log("[STORAGE] Client-side direct database insert for short succeeded.");
-            return true;
-          } else {
-            throw new Error(directErr?.message || 'Insert short query failed');
-          }
-        } catch (fbErr) {
-          console.error("[STORAGE] Direct database fallback failed:", fbErr);
-          throw fbErr;
+        if (response.ok) {
+          console.log("[STORAGE] Proxy API insert for short succeeded.");
+          return true;
+        } else {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error || errData.message || 'Insert short API failed');
         }
+      } catch (apiErr) {
+        console.warn("[STORAGE] Proxy API failed, trying direct database insert fallback...", apiErr);
+        const { data: directData, error: directErr } = await supabase
+          .from("shorts")
+          .insert([{
+            owner_id: userId,
+            video_url: sanitizedShort.videoUrl,
+            description: sanitizedShort.description,
+            creator: sanitizedShort.creator,
+            avatar: sanitizedShort.avatar,
+            created_at: new Date().toISOString()
+          }])
+          .select("*")
+          .maybeSingle();
+
+        if (!directErr && directData) {
+          console.log("[STORAGE] Client-side direct database insert for short succeeded.");
+          return true;
+        } else {
+          throw new Error(directErr?.message || 'Insert short query failed');
+        }
+      }
     } catch (error) {
       console.error('Error inserting short:', error);
       throw error;
@@ -716,12 +764,62 @@ export const supabaseService = {
 
         return publicUrl;
       } catch (clientErr: any) {
-        console.error(`[STORAGE] Client-side direct upload rejected:`, clientErr);
-        throw clientErr;
+        console.warn(`[STORAGE] Client-side direct upload rejected:`, clientErr);
+        console.log("[STORAGE] Falling back to proxy upload...");
+        return await this.performProxyUpload(file, key, contentType, token, onProgress);
       }
     } catch (error: any) {
       console.error('[STORAGE] Upload flow failed:', error);
       throw error;
+    }
+  },
+
+  async performProxyUpload(file: File, key: string, contentType: string, token: string, onProgress?: (percent: number) => void): Promise<string> {
+    console.log(`[STORAGE] Initiating proxy upload via server (Size: ${(file.size / 1024 / 1024).toFixed(2)} MB)...`);
+    
+    // Approximate progress to give nice visual feedback
+    if (onProgress) {
+      onProgress(10);
+      let p = 10;
+      const interval = setInterval(() => {
+        if (p < 90) {
+          p += 5;
+          onProgress(p);
+        } else {
+          clearInterval(interval);
+        }
+      }, 300);
+      
+      (file as any)._progressInterval = interval;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('key', key);
+      formData.append('contentType', contentType);
+
+      // getApiUrl must be defined, wait, I removed it. I need to use fetch('/api/upload/proxy')
+      const response = await fetch('/api/upload/proxy', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => ({}));
+        throw new Error(errJson.error || errJson.message || `Proxy failed with status ${response.status}`);
+      }
+
+      const data = await response.json();
+      if ((file as any)._progressInterval) clearInterval((file as any)._progressInterval);
+      if (onProgress) onProgress(100);
+      return data.publicUrl;
+    } catch (err: any) {
+      if ((file as any)._progressInterval) clearInterval((file as any)._progressInterval);
+      throw err;
     }
   },
 
@@ -745,37 +843,52 @@ export const supabaseService = {
         cloudflareId: videoData.cloudflareId ? String(videoData.cloudflareId) : ''
       };
 
-      // Removed fetch block
-        try {
-          const { data: directData, error: directErr } = await supabase
-            .from("videos")
-            .insert([{
-              owner_id: userId,
-              title: sanitizedData.title,
-              description: sanitizedData.description,
-              video_url: sanitizedData.videoUrl,
-              thumbnail: sanitizedData.thumbnailUrl,
-              duration: sanitizedData.duration,
-              category: sanitizedData.category,
-              channel_name: sanitizedData.channelName,
-              channel_avatar: sanitizedData.channelAvatar,
-              status: "ready",
-              posted_at: new Date().toISOString()
-            }])
-            .select("*")
-            .maybeSingle();
+      try {
+        const response = await fetch('/api/videos', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token && { 'Authorization': `Bearer ${token}` })
+          },
+          body: JSON.stringify(sanitizedData)
+        });
 
-          if (!directErr && directData) {
-            console.log("[STORAGE] Client-side direct database insert for video succeeded.");
-            return true;
-          } else {
-            console.warn("[STORAGE] Direct database fallback returned error:", directErr);
-            throw new Error(directErr?.message || 'Insert video query failed');
-          }
-        } catch (fbErr) {
-          console.error("[STORAGE] Direct database fallback failed:", fbErr);
-          throw fbErr;
+        if (response.ok) {
+          console.log("[STORAGE] Proxy API insert for video succeeded.");
+          return true;
+        } else {
+          const errData = await response.json().catch(() => ({}));
+          console.error("[STORAGE] Proxy API insert for video failed:", errData);
+          throw new Error(errData.error || errData.message || 'Insert video API failed');
         }
+      } catch (apiErr) {
+        console.warn("[STORAGE] Proxy API failed, trying direct database insert fallback...", apiErr);
+        const { data: directData, error: directErr } = await supabase
+          .from("videos")
+          .insert([{
+            owner_id: userId,
+            title: sanitizedData.title,
+            description: sanitizedData.description,
+            video_url: sanitizedData.videoUrl,
+            thumbnail: sanitizedData.thumbnailUrl,
+            duration: sanitizedData.duration,
+            category: sanitizedData.category,
+            channel_name: sanitizedData.channelName,
+            channel_avatar: sanitizedData.channelAvatar,
+            status: "ready",
+            posted_at: new Date().toISOString()
+          }])
+          .select("*")
+          .maybeSingle();
+
+        if (!directErr && directData) {
+          console.log("[STORAGE] Client-side direct database insert for video succeeded.");
+          return true;
+        } else {
+          console.warn("[STORAGE] Direct database fallback returned error:", directErr);
+          throw new Error(directErr?.message || 'Insert video query failed');
+        }
+      }
     } catch (error) {
       console.error('Error inserting video:', error);
       throw error;
