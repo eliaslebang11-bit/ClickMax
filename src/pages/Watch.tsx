@@ -176,12 +176,12 @@ export default function Watch() {
       )}>
         {/* Left Column: Player & Info */}
         <div className={cn(
-          "lg:col-span-9 space-y-6",
+          "lg:col-span-9 flex flex-col",
           isPlayerFullWindow && "lg:col-span-12"
         )}>
         <div className={cn(
           "sticky top-0 transition-all duration-500",
-          showComments ? "z-[120] bg-brand-bg py-2" : "z-[101]"
+          showComments ? "z-[120] bg-brand-bg" : "z-[101]"
         )}>
           <CustomVideoPlayer 
             src={video.videoUrl} 
@@ -224,7 +224,7 @@ export default function Watch() {
         </div>
 
         {!isPlayerFullWindow && (
-          <div className="space-y-3 px-4 md:px-8">
+          <div className="space-y-3 px-4 md:px-8 mt-2 md:mt-4">
             <h1 className="text-xl md:text-2xl font-bold leading-tight tracking-tight">
             {!isTitleExpanded && video.title.length > 40 
               ? `${video.title.slice(0, 40)}` 
